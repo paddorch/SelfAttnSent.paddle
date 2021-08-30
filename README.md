@@ -22,7 +22,7 @@ A PaddlePaddle implementation of A Structured Self-attentive Sentence Embedding.
 ## Usage
 
 ### Train
-1. 下载数据集到 `data/raw` 文件夹，下载`GloVe`预训练向量，并在`config/snli_preprocess.json`中配置路径，运行`preprocess.py`
+1. 下载[数据集](https://nlp.stanford.edu/projects/snli/snli_1.0.zip)并解压到 `data/raw` 文件夹，下载[`GloVe`](https://nlp.stanford.edu/data/glove.840B.300d.zip)预训练向量，并在`config/snli_preprocess.json`中配置路径，运行`preprocess.py`
 ```shell
 python preprocess.py
 ```
