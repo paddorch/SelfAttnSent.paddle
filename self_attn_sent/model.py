@@ -44,7 +44,7 @@ class SelfAttnSent(nn.Layer):
 
         pretrained_attr = paddle.ParamAttr(name='embedding',
                                            initializer=paddle.nn.initializer.Assign(embeddings),
-                                           trainable=True)
+                                           trainable=False)
         self.embed = paddle.nn.Embedding(num_embeddings=vocab_size,
                                          embedding_dim=emb_dim,
                                          weight_attr=pretrained_attr)

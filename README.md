@@ -11,7 +11,7 @@ A PaddlePaddle implementation of A Structured Self-attentive Sentence Embedding.
 
 | Datasets | Paper accuracy | Our accuracy | abs. improv. |
 | -------- | -------------- | ------------ | ------------ |
-| SNLI     | 84.4           | 84.66        | 0.26         |
+| SNLI     | 84.4           | 84.72        | 0.32         |
 
 ## Requirement
 
@@ -34,9 +34,9 @@ bash train.sh
 
 ### Download Trained model
 
-[SNLI model](https://cowtransfer.com/s/16d77730356445)
+[SNLI model](https://drive.google.com/file/d/1_1EMI4FjpdET9RYVyeHJHUQJBZ8o7ySY/view?usp=sharing)
 
-将模型分别放置于 `output` 目录下，如下运行 `eval` bash 脚本即可测试模型。
+将模型放置于 `output` 目录下，如下运行 `eval` bash 脚本即可测试模型。
 
 ### Test
 
@@ -50,7 +50,17 @@ bash eval.sh
 
 ## Detail
 
-我们采用了与原文对应代码仓库基本一致的实验设置，不同之处在于我们首先在固定词嵌入层的情况下训练了 10 个 epoch，随后将词嵌入层加入训练。实验显示在本任务中这种训练方式能够有效提升模型性能。
+### 与上次提交的区别
+
+1. 采用 lowercase、跳过标点的处理，与原文匹配。
+2. 增加了端到端的训练脚本。
+3. 增加了训练日志。
+
+### 训练细节
+
+首先冻结 embedding 训练 9 轮，随后在验证集最佳模型的基础上继续训练到 10 轮，选择验证集最佳模型进行最终的评估。
+
+训练日志同时记录了验证集表现和测试集表现。
 
 对于原论文与其对应实现设置的冲突之处，我们选择参考后者。
 

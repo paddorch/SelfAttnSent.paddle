@@ -3,8 +3,8 @@
     "embeddings_file": "/hy-tmp/glove.840B.300d.txt",
     "target_dir": "../data/preprocessed",
 
-    "lowercase": false,
-    "ignore_punctuation": false,
+    "lowercase": true,
+    "ignore_punctuation": true,
     "num_words": null,
     "stopwords": [],
     "labeldict": {"entailment": 0,

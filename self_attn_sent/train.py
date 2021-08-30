@@ -26,13 +26,17 @@ parser.add_argument('--train_path', metavar='DIR',
 parser.add_argument('--val_path', metavar='DIR',
                     help='path to validation data csv [default: ../data/preprocessed/dev_data.pkl]',
                     default='../data/preprocessed/dev_data.pkl')
+parser.add_argument('--test_path', metavar='DIR',
+                    help='path to validation data csv [default: ../data/preprocessed/test_data.pkl]',
+                    default='../data/preprocessed/test_data.pkl')
 parser.add_argument('--embed_path', metavar='DIR',
                     help='path to embedding [default: ../data/preprocessed/embeddings_data.pkl]',
                     default='../data/preprocessed/embeddings.pkl')
 # learning
 learn = parser.add_argument_group('Learning options')
 learn.add_argument('--lr', type=float, default=0.01, help='initial learning rate [default: 0.01]')
-learn.add_argument('--epochs', type=int, default=200, help='number of epochs for train [default: 200]')
+learn.add_argument('--epochs', type=int, default=10, help='number of epochs for train [default: 200]')
+learn.add_argument('--tune_epoch', type=int, default=9)
 learn.add_argument('--batch_size', type=int, default=50, help='batch size for training [default: 50]')
 learn.add_argument('--grad_clip', default=100, type=int, help='Norm cutoff to prevent explosion of gradients')
 learn.add_argument('--optimizer', default='Adagrad',
@@ -62,7 +66,8 @@ device.add_argument('--gpu', type=int, default=None)
 experiment = parser.add_argument_group('Experiment options')
 experiment.add_argument('--verbose', dest='verbose', action='store_true', default=False,
                         help='Turn on progress tracking per iteration for debugging')
-experiment.add_argument('--continue_from', default='', help='Continue from checkpoint model')
+experiment.add_argument('--continue_from', default='',
+                        help='Continue from checkpoint model')
 experiment.add_argument('--checkpoint', dest='checkpoint', default=True, action='store_true',
                         help='Enables checkpoint saving of model')
 experiment.add_argument('--checkpoint_per_batch', default=10000, type=int,
@@ -79,7 +84,7 @@ experiment.add_argument('--save_interval', type=int, default=1,
                         help='how many epochs to wait before saving [default:1]')
 
 
-def train(train_loader, dev_loader, model, args):
+def train(train_loader, dev_loader, test_loader, model, args):
     # clip gradient
     if args.grad_clip:
         clip = paddle.nn.ClipGradByValue(max=args.grad_clip)
@@ -115,10 +120,22 @@ def train(train_loader, dev_loader, model, args):
         start_iter = 1
         best_acc = None
 
+    best_dict = None
+    is_finetune = False
+
     model.train()
 
-    for epoch in range(start_epoch, args.epochs + 1):
+    epoch = start_epoch
+    while epoch < args.epochs + 1:
         _i_batch = 0
+        if epoch >= args.tune_epoch and not is_finetune:
+            print("Reload best model to fine-tune...")
+            epoch = best_dict['epoch'] + 1
+            best_acc = best_dict.get('best_acc', None)
+            model.set_state_dict(best_dict['state_dict'])
+            model.embed.weight.stop_gradient = False
+            model.embed.weight.trainable = True
+            is_finetune = True
         for i_batch, batch in enumerate(train_loader, start=start_iter):
             _i_batch = i_batch
             premises = paddle.to_tensor(batch["premise"])
@@ -130,7 +147,7 @@ def train(train_loader, dev_loader, model, args):
             logit, penalty = model(premises, premises_lengths, hypothesises, hypothesis_lengths)
             loss = criterion(logit, target)
             if args.use_penalty:
-                loss += args.penalty_c*penalty
+                loss += args.penalty_c * penalty
             loss.backward()
             optim.step()
             optim.clear_grad()
@@ -155,6 +172,7 @@ def train(train_loader, dev_loader, model, args):
                                                                                                   ))
             # validation
             if i_batch % args.val_interval == 0:
+                print('Dev set')
                 val_loss, val_acc = eval(dev_loader, model, epoch, i_batch, optim, args)
                 if best_acc is None or val_acc > best_acc:
                     file_path = '%s/SelfAttnSent_best.pth.tar' % (args.save_folder)
@@ -165,6 +183,13 @@ def train(train_loader, dev_loader, model, args):
                                      'best_acc': best_acc},
                                     file_path)
                     best_acc = val_acc
+                    if not is_finetune:
+                        best_dict = {'state_dict': model.state_dict(),
+                                     'epoch': epoch,
+                                     'optimizer': optim.state_dict(),
+                                     'best_acc': best_acc}
+                print('Test set')
+                eval(test_loader, model, epoch, i_batch, optim, args)
 
         if args.checkpoint and epoch % args.save_interval == 0:
             file_path = '%s/SelfAttnSent_epoch_%d.pth.tar' % (args.save_folder, epoch)
@@ -175,6 +200,8 @@ def train(train_loader, dev_loader, model, args):
                             file_path)
 
         print('\n')
+        start_iter = 1
+        epoch += 1
 
 
 def eval(data_loader, model, epoch_train, batch_train, optim, args):
@@ -229,7 +256,8 @@ def make_data_loader(dataset_path, batch_size, num_workers, is_shuffle=False, da
     with open(dataset_path, "rb") as pkl:
         dataset = NLIDataset(pickle.load(pkl))
 
-    dataset_loader = DataLoader(dataset, shuffle=is_shuffle, num_workers=num_workers, batch_size=batch_size, drop_last=True)
+    dataset_loader = DataLoader(dataset, shuffle=is_shuffle, num_workers=num_workers, batch_size=batch_size,
+                                drop_last=True)
     return dataset, dataset_loader
 
 
@@ -244,6 +272,7 @@ def main():
     # load train and dev data
     train_dataset, train_loader = make_data_loader(args.train_path, args.batch_size, args.num_workers, is_shuffle=True)
     dev_dataset, dev_loader = make_data_loader(args.val_path, args.batch_size, args.num_workers, is_shuffle=False)
+    test_dataset, test_loader = make_data_loader(args.test_path, args.batch_size, args.num_workers, is_shuffle=False)
 
     # load embeddings
     print("\nLoading embeddings from {}".format(args.embed_path))
@@ -253,7 +282,6 @@ def main():
     # get class weights
     class_weight, num_class_train = train_dataset.get_class_weight()
     _, num_class_dev = dev_dataset.get_class_weight()
-
 
     print('\nNumber of training samples: {}'.format(str(train_dataset.__len__())))
     for i, c in enumerate(num_class_train):
@@ -295,7 +323,7 @@ def main():
     print(model)
 
     # train
-    train(train_loader, dev_loader, model, args)
+    train(train_loader, dev_loader, test_loader, model, args)
 
 
 if __name__ == '__main__':
